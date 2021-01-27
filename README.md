@@ -1,0 +1,2 @@
+# Visualization-ShinyApp
+With permission from Dr. Heather Mattie, this is midterm assignment is an exploration of Covid-19 data.  It includes some data reshaping and cleaning, but largely focuses on data visualization. This visualization is two-fold, where part of the assignment focuses on graphical displays and data exploration, and the latter half includes an interactive Shiny App. To run this code, you may find CSV files included in the repository. 
