@@ -1,0 +1,347 @@
+---
+title: "BST 260 Midterm"
+date: "Due 11/23/2020 by 11:59pm EST"
+output: html_document
+---
+
+### Instructions and Expectations
+* You may use lecture notes, homework solutions, lab solutions and the internet for the exam. This is an individual exam and communication with other students is **NOT** permitted. If you have a question about the exam, please email the TAs or the instructor. **DO NOT ask questions on Slack.**
+
+* All questions with answers from the teaching staff will be posted to this [google doc](https://docs.google.com/document/d/1rRnXnoeqIlxQ7ZNneSBK5aguO887EYFo9Zc4rGdlFdU/edit?usp=sharing) so everyone has access to the same information. It is your responsibility to check this document. 
+
+* Your repository should include a knittable .Rmd file, corresponding .html file, and app.R file. **Do not embed the app in the .Rmd file**
+
+* **Read each question carefully**. Some questions have multiple parts and may require code _and_ a text answer. 
+
+* All needed R packages have been provided as well as a .csv file with the appropriate path specified so you shouldn't have any issues reading in the data.
+
+* No late days are available for this exam.
+
+* If an emergency takes place and you are unable to complete the exam by the due date, email the instructor as soon as possible.
+
+* This exam is not to be distributed to any individual, group or company and is not to be posted anywhere online. If you share or post this exam anywhere it is a violation of the [School's Academic Integrity Policy](https://cdn1.sph.harvard.edu/wp-content/uploads/sites/76/2020/08/StudentHandbook_2020-2021_0827.pdf). Students who distribute or use any course material in this manner may be subject to disciplinary action.
+
+### COVID-19 Data Exploration
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(zoo)
+library(maps)
+```
+
+Novel coronavirus disease 2019 (COVID-19) is caused by severe acute respiratory syndrome coronavirus 2 (SARS-CoV-2) and was first identified in Wuhan, Hubei, China, in late 2019. This highly infectious disease quickly spread throughout the world, and on March 11, 2020, the World Health Organization (WHO) officially recognized COVID-19 as a pandemic [[source]](https://www.who.int/news-room/detail/29-06-2020-covidtimeline). At the time of this writing, there is no known vaccine or specific antiviral treatment, and many aspects of the nature of COVID-19 remain unknown. The pandemic and the lockdown measures implemented in response to it have caused global social and economic disruption. More than ever, knowing how to appropriately interpret data is a vital component of understanding disease spread and making public health decisions.  
+
+The Center for Systems Science and Engineering at Johns Hopkins was among the earliest to collect and publish global data related to the COVID-19 pandemic. The data used for their [reporting dashboard](https://coronavirus.jhu.edu/map.html), aggregated from multiple sources and updated daily, is freely available on [Github](https://github.com/CSSEGISandData/COVID-19). Several different datasets are available, but for this question, we will consider the daily time series summary table for globally confirmed cases. The file provided for you contains data through October 31, 2020. 
+
+```{r, message=FALSE}
+# Read in Johns Hopkins global data for confirmed cases of COVID-19
+# Source: 
+# https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv
+jhu = read_csv("time_series_covid19_confirmed_global.csv")
+```
+
+## Question 1
+1. Reshape the Johns Hopkins data to long format, so that instead of having many columns of cases (each one corresponding to a different date), you have one column that stores the cases and one column that stores the dates. Then, convert your new date column to be a date type instead of a character type. 
+
+```{r}
+#converting to long format
+jhu_dat <- jhu %>% gather(date, cases, -Lat, -Long, -`Province/State`, -`Country/Region`)
+#adjusting date, renaming variables for ease
+jhu_dat <- jhu_dat %>% mutate(date = mdy(date)) %>% rename(Country_Region = `Country/Region`) %>% rename(Province_State = `Province/State` )
+
+```
+
+## Question 2
+2. This dataset keeps track of the number of confirmed cases reported for states, provinces, and other sub-regions within a given country. We would like to only look at the overall number of cases in each country, so create a new data frame with three columns: country name, date, and the total number of cases in the country on that day. You can do this by summing up the cases across all of the states/provinces within each country and date. 
+
+   Using your new data frame, make a line plot of the number of confirmed cases vs. date for the following countries: China, Colombia, Germany, Nigeria, and the United States. Comment on what you see. 
+
+```{r}
+# Calculating total cases/day/country
+sum_jhu <- jhu_dat %>% group_by(Country_Region, date) %>%
+  summarize(cases=sum(cases)) %>% ungroup()
+# Keeping only the date, cases, and country variables
+sum_jhu <- sum_jhu %>% 
+  select(Country_Region, date, cases)
+# Checking the data output
+head(sum_jhu)
+```
+
+```{r}
+# Selecting the countries
+countries <- c("US", "Colombia", "Germany", "Nigeria", "China")
+
+# Graphing the line plot, coloring by country
+sum_jhu %>% filter(Country_Region %in% countries) %>%
+  ggplot(aes(date, cases, color=Country_Region)) + 
+  geom_line() +
+  xlab("Time") + 
+  ylab("Total Number of Cases") +
+  ggtitle("Covid-19 Cases by Country")
+```
+
+### Commenting on graph above
+This graph shows how the United States has had the highest total number of Coronavirus cases over time. In fact, it greatly influences the scale of the graph, so all the other countries look relatively close together. All beginning at 0, the United States ends around 8,000,000 Covid cases by the end of October. The next highest country is Colombia, which is around 1,000,000 cases by the end of October. Germany is the next highest, at about 500,000 by the end of October, with a slight uptick at the end. Both Germany and Colombia seem to have smaller slopes than the United States, indicating a lower rate of increase. Finally, Nigeria and China have total Coronavirus cases that are so low, relative to the United States, that it is hard to tell exactly what they final totals are. 
+
+## Question 3
+3. The number of cases varies greatly between these five countries. This stretches out the scale of the y-axis in your plot from Q2, making it hard to see what's going on in countries where there are relatively few cases. Transforming the data can make it easier to interpret your time series plot. Re-do your plot from Q2, but use a log scale transformation (with base 10) for the y-axis. Describe something that you can see in this plot that was not as obvious in the plot from Q2. 
+
+   Comment: You will get a warning message about the log transform resulting in infinite values. This is because in the early days of the pandemic, many countries recorded zero cases and log(0) is undefined. In this scenario, because we are primarily concerned with observing general trends, it isn't too worrisome and you can ignore the message. We could have considered an alternative transformation that is defined at zero, such as the square root, but logs have a nice interpretation. We also could have done a "pseudo-log" transformation by replacing the undefined values with zeros, or by transforming the data as log(x+1) instead of log(x). 
+
+```{r}
+# Selecting countries again
+countries <- c("US", "Colombia", "Germany", "Nigeria", "China")
+
+#Nearly the same plot as the previous question, except with a log10 transformation
+sum_jhu %>% filter(Country_Region %in% countries) %>%
+  ggplot(aes(date, cases, color=Country_Region)) + 
+  geom_line() +
+  xlab("Time") + 
+  ylab("Log Transformation Total Number of Cases") + 
+  ggtitle("Total Covid-19 Cases") +
+  scale_y_log10()
+```
+
+### Commenting on graph above 
+The log10 transformation in this graphs elucidates the rise in cases for all of the countries, but especially China and Nigeria. In the precious graph, the plots for Nigeria and China were both so low it was hard to identify any trends in the data. However, the log transformation shows how there have been distinct upward trends in Coronavirus cases for both China and Nigeria. 
+
+## Question 4
+4. Create a new variable in your country-level data frame that contains the number of new confirmed cases. 
+
+   The high amount of day-to-day fluctuation in the number of new cases makes it difficult to interpret plots involving this variable. (You can make a plot to see this behavior in action, but you do not need to turn it in.) Many public dashboards and reporting tools prefer to look at seven-day rolling averages. For this assignment, we will define the seven-day rolling average of new cases as the average of the new cases reported on a given day, the three days before, and the three days after. It's a "rolling" average because the window of seven days moves along as you calculate the averages for new dates. 
+   
+   Add the seven-day rolling average of new cases as a new variable in your data frame. Then, re-do your plot from Q2, but plot the seven-day rolling average of new cases on the y-axis. Comment on what you see, especially anything that was not readily apparent in your plots from Q2 and Q3. 
+
+   Hints: 
+   
+   - You can extract the number of new cases from the case totals using the `lag` function. In this toy example, `cases` records the daily total/cumulative number of cases over a two-week period. By default, the `lag` function simply shifts the vector of cases back by one. The number of new cases on each day is then the difference between `cases` and `lag(cases)`. 
+    ```{r}
+    cases = c(13, 15, 18, 22, 29, 39, 59, 61, 62, 67, 74, 89, 108, 122)
+    new_cases = cases - lag(cases)
+    new_cases
+    ```
+   - You can write your own function to calculate a seven-day rolling average, but the `zoo` package already provides the `rollmean` function. Below, the `k = 7` argument tells the function to use a rolling window of seven entries. `fill = NA` tells `rollmean` to return NA for days where the seven-day rolling average can't be calculated (e.g. on the first day, there are no days that come before, so the sliding window can't cover seven days). That way, `new_cases_7dayavg` will be the same length as `cases` and `new_cases`, which would come in handy if they all belonged to the same data frame. If you need help convincing yourself that this works as expected, you can calculate the seven-day rolling averages by hand and compare your results. For example, the seven-day rolling average for Day 5 is (2 + 3 + 4 + 7 + 10 + 20 + 2) / 7 = 48 / 7 = 6.86. 
+    ```{r}
+    new_cases_7dayavg = rollmean(new_cases, k = 7, fill = NA)
+    new_cases_7dayavg
+
+    ```
+   - When you calculate the new cases and seven-day rolling average in the Johns Hopkins data, be sure to remember to group by country and arrange by date, so that the variables are calculated for adjacent days within each country. 
+   - When you make your plot, you will get a warning message about rows with missing values being removed. If you understood the hint about calculating the rolling average, you'll know that this is no cause for alarm! 
+
+```{r}
+# arranged by date, then I group by country, then calculate the lag (new cases per day)
+sum_jhu %>% arrange(date)
+lag_dat <- sum_jhu %>% group_by(Country_Region) %>% mutate(new_cases = cases - lag(cases))
+head(lag_dat)
+
+# use the new cases per day variable to calculate a rolling average over 7 days
+rollavg_dat <- lag_dat %>% group_by(Country_Region) %>% mutate(rollavg = rollmean(new_cases, k = 7, fill = NA))
+
+# Checking the beginning of the data
+head(rollavg_dat)
+```
+
+
+```{r}
+countries <- c("US", "Colombia", "Germany", "Nigeria", "China")
+
+rollavg_dat %>% filter(Country_Region %in% countries) %>%
+  ggplot(aes(date, rollavg, color=Country_Region)) + 
+  geom_line() +
+  xlab("Time") + 
+  ylab("Number of Cases") +
+  ggtitle("7 Day Rolling Average of Covid-19 Cases")
+```
+
+### Assessing the graph above
+The 7 day rolling average graph shows the fluctuations of new Coronavirus cases in a 7 day neighborhood. The United States remains the country with the greatest number of new Coronavirus cases over a 7 day period,except for the very beginning of the pandemic, where China has the highest average rate of new infections. The country that has second most varies between Colombia and Germany, where Germany had the second highest average in April and the end of October, and Colombia had the highest average rate of new Coronavirus cases between May and the beginning of October. 
+
+This graph also shows the peaks of Coronavirus cases, especially for the United States. In this case, the United States quickly increases to about 30,000 new cases a day toward the end of April, then decreases to about 20,000 new cases a day in June. Again, we see the infection rate increasing to about 68,000 by mid-August, subsequently decreasing to about 38,000in September, and increasing to the highest peak of nearly 80,000 by the end of October. 
+
+These trends are somewhat apparent for other countries, but are diminished due to the United States domination of the scale. Germany has a small peak in April, with about 8,000 new infections a day, and another peak at the end of October with about 13,000 new infections a day. Similarly, Colombia has a distinct peak at around 11,000 new cases a day at the beginning of September. 
+
+
+## Question 5
+5. Instead of looking at the raw counts of new cases, perhaps it would be more informative to look at new cases per capita. To do that, we will need to use the country populations from the Johns Hopkins UID lookup table. The country-level populations are stored in the observations where `Province_State` is NA. (The observations where `Province_State` is not NA correspond to provinces, states, and other sub-regions within a country.)
+
+    ```{r}
+    # Read in Johns Hopkins UID lookup table
+    # Source: https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv
+    uid_lookup_table = read_csv("UID_ISO_FIPS_LookUp_Table.csv")
+    ```
+
+   Merge your country-level Johns Hopkins data frame with the country-level populations from the UID lookup table. Then, using the seven-day rolling average of new cases (from Q4) and the country populations, create a new variable that calculates the seven-day rolling average of new cases per million. Plot the seven-day rolling average of new cases per million against date for China, Colombia, Germany, Nigeria, and the United States. What conclusions can you draw from this plot that you weren't able to when looking at the plot from Q4? 
+
+```{r}
+# creating new data frame with only required variables
+uid_lookup <- uid_lookup_table %>% select(Country_Region, Population) %>% ungroup()
+
+uid_lookup <- uid_lookup %>% group_by(Country_Region) 
+uid_sum <- uid_lookup %>%
+  summarize(sum_pop = sum(Population, na.rm = TRUE)) %>% ungroup()
+uid_sum %>% filter(Country_Region=="US")
+
+# merging the two data frames 
+merge_dat <- left_join(uid_sum, rollavg_dat)
+head(merge_dat)
+# calculating rolling average per population
+
+# calculating the average number of new cases per million
+full_dat <- merge_dat %>% mutate(avg_pop = (rollavg/sum_pop)*1000000)
+
+full_dat %>% filter(Country_Region=="Germany")
+
+# selecting countries for graph
+countries <- c("US", "Germany", "Nigeria", "Colombia", "China")
+
+# graphing rolling average of new cases per million
+full_dat %>% filter(Country_Region %in% countries) %>%
+  ggplot(aes(date, avg_pop, color=Country_Region)) + 
+  geom_line() +
+  xlab("Time") + 
+  ylab("7-Day Rolling Average of Cases per Million") +
+  ggtitle("Covid-19 Cases")
+```
+
+### Assessing graph above
+This graph shows the number of cases relative to the population of each country. Most notably, this is the only graph that shows that the United States does not consistently have the worst outbreak of Coronavirus. While it shows generally the same trend of three distinct peaks, it shows that Colombia has the most cases per million for a large part of the graph. 
+
+Colombia has the most cases per million from the end of July to the end of October, with a peak of about 110 cases per million by the beginning of September. Toward the beginning of April, Germany has the most cases per million, peaking at about 32 cases per million, before being overtaken by the United States, without about 30 cases per million toward the end of April. Germany then begins to rise to about 85 cases per million toward the end of October, roughly on par with Colombia and the United States. Nigeria and China seem to remain consistently low in terms of Coronavirus infections per million. 
+
+
+## Question 6
+6. Create a Shiny app that allows the user to select a variable (the seven-day rolling average of either new cases or new cases per million) and up to six countries to plot. Based on these user inputs, display a line plot of the selected variable vs. date, for the selected countries. You should be able to re-create the plots from Q4 and Q5 in your Shiny app. 
+
+   Then, add a widget that allows the user to select a date from the range of dates in the Johns Hopkins data. Draw a vertical reference line in your plot to indicate the selected date. Also, print a table that lists the selected countries, as well as the seven-day rolling average of the number of new cases and new cases per million for these countries, on the selected date. (Both new cases and new cases per million should always be printed by the table, regardless of which variable was selected by the user.)
+
+   Using your Shiny app, try to visually approximate the date in the spring when the United States and Italy had about the same seven-day rolling average of new cases per million (the vertical reference line will help with this). State what date this was. On this day, about how many times more new cases did the United States have compared to Italy?
+
+   Hints:
+   
+   - Most likely, when you create the widget for selecting the variable, the user input will be saved as a character string. In order to make ggplots using character strings for the variable names, you'll want to use `aes_string` instead of `aes`. 
+   - If you are using the `selectizeInput` widget to allow users to pick countries, you can limit the maximum number of countries that they are allowed to select using `maxItems` in the `options` argument. For more details, see the documentation [here](https://shiny.rstudio.com/articles/selectize.html). 
+   
+   - Below is a screencap of one possible Shiny app layout (with phony data in the plots and tables). Please note that this is only an example, and you certainly do not need to design your Shiny app the same way. You can use whatever layout, colors, labels, etc. that you like, but please make your final product intuitive and attractive.
+
+![](sample_app.png)
+   
+It appears that Italy and the United States had the same amount of 
+### Answer
+Coronavirus infections per million around April 7th, 2020. However, the rates are near each other for a span of a few days, and it appears that the rate of Coronavirus infections seems to be the same on April 14th, 2020, too. Upon inspection of the graph and vertical line analysis, the cases per 1,000,000 people on the 7th has a difference of 0.78, where the different for the 14th is 0.13, so I will continue to use April 14th for further analysis. 
+
+On this day the average number of cases per 1,000,000 residents in Italy was 29.39, and the total increase in cases was 3551.00. Meanwhile, in the United States, the average number of cases per 1,000,000 residents was 29.46, with the total increase in cases at 29,290.86. This is about 8.25 times greater than the total number of cases in Italy. 
+
+
+## Question 7
+7. The `map_data` function converts country outlines from the `maps` package into data frames that can be used to plot maps in `ggplot2`. In the basic example below, `world_map` contains latitude and longitude information that can be used by `geom_polygon` to draw the outlines of the countries in a world map. To make a heat map, you would fill in the countries according to a variable of interest instead of coloring them all gray. 
+
+    ```{r, fig.width=8}
+    # Pull out world map data frame
+    world_map = map_data("world")
+    
+    # Basic example of a map
+    ggplot(world_map, aes(x = long, y = lat, group = group)) +
+      geom_polygon(fill="gray", color = "white") + 
+      theme(panel.grid.major = element_blank(), 
+            panel.background = element_blank(),
+            axis.title = element_blank(), 
+            axis.text = element_blank(),
+            axis.ticks = element_blank())
+    ```
+
+   Create a heatmap of the world with the countries colored according to the seven-day rolling average of new cases per million on August 1, 2020. To do this, first filter the country-level Johns Hopkins dataset to only include observations from this date. Then, merge the Johns Hopkins data frame with the world map data frame. Before merging, you will need to recode several of the country names to get them to match in both data frames. Finally, fill in the countries in the heatmap with a sensible choice of bins and colors. Do you observe any spatial correlation in the heatmap? 
+
+   Hints: 
+   
+   - Filtering the Johns Hopkins data by date before merging it with the world map data will help you avoid long runtimes and/or your computer crashing. 
+   - Before joining the world map data with the Johns Hopkins data, you'll want to make sure that the countries match successfully with each other whenever possible. We have provided you with the `country_key` data frame, which contains the country names that are discrepant between the two datasets (the `JHU` variable stores the country names used by Johns Hopkins and the `map` variable stores the country names used by the world map data). After you recode the country names to match each other, merging should result in only 3 countries from the Johns Hopkins data failing to be matched with the world map data: "Diamond Princess", "MS Zaandam", and "West Bank and Gaza". The Diamond Princess and the MS Zaandam are cruise ships that experienced COVID-19 outbreaks. 
+   
+    ```{r}
+    # Key for discrepant country names in Johns Hopkins and world map data
+    country_key = data.frame(rbind(c("Antigua and Barbuda", "Antigua"), 
+                                   c("Burma", "Myanmar"), 
+                                   c("Cabo Verde", "Cape Verde"), 
+                                   c("Congo (Kinshasa)", 
+                                     "Democratic Republic of the Congo"), 
+                                   c("Congo (Brazzaville)", 
+                                     "Republic of Congo"), 
+                                   c("Cote d'Ivoire", "Ivory Coast"), 
+                                   c("Czechia", "Czech Republic"), 
+                                   c("Eswatini", "Swaziland"), 
+                                   c("Holy See", "Vatican"), 
+                                   c("Korea, South", "South Korea"), 
+                                   c("North Macedonia", "Macedonia"), 
+                                   c("Saint Kitts and Nevis", "Saint Kitts"), 
+                                   c("Saint Vincent and the Grenadines", 
+                                     "Saint Vincent"), 
+                                   c("Taiwan*", "Taiwan"), 
+                                   c("Trinidad and Tobago", "Trinidad"), 
+                                   c("United Kingdom", "UK"), 
+                                   c("US", "USA")))
+    names(country_key) = c("JHU", "map")
+    ```
+    
+    
+    
+   - If you are using the `recode` function to recode your country names, the help file (run `?recode` or `help(recode)`) contains an example that shows you how to do this using a named vector instead of manually passing in value pairs one at a time. 
+   - It is difficult to interpret the heatmap when you use the default bins and colors. Consider specifying better bin breaks, or transforming the scale of the bins. You may also want to use a continuous color palette that makes it easier to distinguish between bins (see `scale_fill_viridis_c` or `scale_fill_brewer`).
+
+```{r}
+    # Pull out world map data frame
+    world_map = map_data("world")
+    
+    world_map <- world_map %>% select(long, lat, region, group) %>% rename(Country_Region = region)
+
+    merge_dat$Country_Region <- recode(merge_dat$Country_Region, "Antigua and Barbuda" = "Antigua", 
+                                   "Burma" = "Myanmar", 
+                                   "Cabo Verde" = "Cape Verde", 
+                                   "Congo (Kinshasa)" = 
+                                     "Democratic Republic of the Congo",  
+                                   "Congo (Brazzaville)" = 
+                                     "Republic of Congo",  
+                                   "Cote d'Ivoire" = "Ivory Coast", 
+                                   "Czechia" = "Czech Republic", 
+                                   "Eswatini" = "Swaziland", 
+                                   "Holy See" = "Vatican", 
+                                   "Korea, South" = "South Korea", 
+                                   "North Macedonia" = "Macedonia", 
+                                   "Saint Kitts and Nevis" = "Saint Kitts", 
+                                   "Saint Vincent and the Grenadines" = 
+                                     "Saint Vincent", 
+                                   "Taiwan*" = "Taiwan", 
+                                   "Trinidad and Tobago" = "Trinidad", 
+                                   "United Kingdom" = "UK", 
+                                   "US" = "USA")
+    
+    temp_dat <- merge_dat %>% filter(date == "2020-08-01")
+    map_df <- full_join(temp_dat, world_map)
+
+    # Basic example of a map
+    ggplot(map_df, aes(x = long, y = lat, group = group)) +
+      geom_polygon(data = map_df, aes(fill=rollavg), color = "white") + 
+      theme(panel.grid.major = element_blank(), 
+            panel.background = element_blank(),
+            axis.title = element_blank(), 
+            axis.text = element_blank(),
+            axis.ticks = element_blank()) + 
+      scale_fill_gradientn(trans = "log10",  limits= c(NA,60000), colors = terrain.colors(12))
+    
+```
+## Answer
+
+There appears to be spatial correlation among certain areas. Africa tends to be consistently low in terms of infection rate, with the Americas and Europe consistently higher, even over time. Countries near each other tend to have similar outbreaks. 
+China peaks at the beginning of the pandemic, then quickly levels off. 
+
+##Question 8
+8. Update your Shiny app from Q6 so that it also displays a heatmap of the user-selected variable (seven-day rolling average of new cases or new cases per million) on the user-selected date. The heatmaps will look weird and gray when the earliest or latest dates are selected, because the seven-day rolling averages are set to NA for these dates. 
+
+   Using your Shiny app, visually identify the three countries with the highest seven-day rolling average of new cases on September 1, 2020. State the number of new cases each of these countries had, as reported by your summary table. Does it visually appear that these three countries also had the highest number of new cases per million on this date? 
+
+   Hint: In addition to the points brought up in the heatmap-related hints from Q7, you will need to make sure that your bins for coloring the countries stay the same across the different dates. (If you allow the bins/colors to update automatically based on the data, they will change depending on the range of the new case counts or new cases per million on that date. Because we want to be able to monitor changes in the heatmap over time, you need to fix the range to always stay the same.) 
+
+### Answer
+According to my graph of 7-day rolling average of cases on September 1st, 2020, it appears that the United States, Brazil, and India has the highest case counts. According to the output table, these are the following values: the USA had about 41,862 cases, Brazil had about 40,999 cases, and India had about 79,886 cases.
+
+However, when assessing the graph on September 1st, 2020, but for Covid-19 cases per million, the countries with the highest case counts become less clear. While Brazil, the USA, and India still appear to have high numbers per million, many other countries appear to be included in this high-case count demographic. The highest country appears to be Argentina, with about 220.86 cases/million. However, the countries at 2nd and 3rd highest cases per million are less clear. Some possible countries include: Libya (79.34 cases/million), Peru (104.86 cases/million), Spain(91.03 cases/million), Namibia (79.67 cases/million), among others. 
